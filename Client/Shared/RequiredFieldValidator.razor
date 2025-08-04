@@ -1,0 +1,54 @@
+﻿<div class="validation-message">
+    @if (!IsValid)
+    {
+        <span class="text-danger">@ErrorMessage</span>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public object Value { get; set; }
+
+    [Parameter]
+    public string FieldName { get; set; }
+
+    [Parameter]
+    public string CustomErrorMessage { get; set; }
+
+    private string ErrorMessage =>
+        string.IsNullOrWhiteSpace(CustomErrorMessage)
+            ? $"{FieldName} es requerido"
+            : CustomErrorMessage;
+
+    private bool IsValid
+    {
+        get
+        {
+            if (Value == null) return false;
+
+            return Value switch
+            {
+                // Para strings
+                string str => !string.IsNullOrWhiteSpace(str),
+
+                // Para números (int, decimal, double, etc.)
+                int num => num != 0,
+                decimal dec => dec != 0,
+                double dbl => dbl != 0,
+                float flt => flt != 0,
+
+                // Para booleanos (siempre válido ya que tiene valor)
+                bool => true,
+
+                // Para Guid
+                Guid guid => guid != Guid.Empty,
+
+                // Para DateTime
+                DateTime date => date != DateTime.MinValue,
+
+                // Para cualquier otro tipo que no sea null
+                _ => true
+            };
+        }
+    }
+}

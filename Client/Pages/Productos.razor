@@ -1,0 +1,215 @@
+﻿@page "/productos"
+@using FacturacionFfacsa.Shared.Models
+@inject HttpClient Http
+@inject IJSRuntime js
+@using Microsoft.AspNetCore.Components
+
+<PageTitle>Productos</PageTitle>
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3 class="mb-0">Productos</h3>
+        <button class="btn btn-primary" @onclick="NuevoProducto">
+            <i class="bi bi-file-earmark-plus-fill"></i> Nuevo Producto
+        </button>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(mensajeAdvertencia))
+    {
+        <div class="alert alert-warning alert-dismissible fade show" role="alert">
+            <strong>Advertencia:</strong> @mensajeAdvertencia
+            <button type="button" class="btn-close" aria-label="Close" @onclick="() => mensajeAdvertencia = string.Empty"></button>
+        </div>
+    }
+
+    @if (listaProductos == null)
+    {
+        <p><em>Cargando productos...</em></p>
+    }
+    else if (!listaProductos.Any())
+    {
+        <div class="alert alert-info">No hay productos registrados.</div>
+    }
+    else
+    {
+        <table class="table table-success table-striped-columns">
+            <thead>
+                <tr>
+                    <th>Nombre</th>
+                    <th class="text-end">Precio</th>
+                    <th class="text-center" style="width: 150px;">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var p in listaProductos)
+                {
+                    <tr>
+                        <td>@p.Nombre</td>
+                        <td class="text-end">@p.Precio.ToString("C")</td>
+                        <td class="text-center">
+                            <button class="btn btn-primary" @onclick="@(() => EditarProducto(p))">
+                                <i class="bi bi-pencil-square"></i>
+                            </button>
+                            <button class="btn btn-danger" @onclick="@(() => MostrarConfirmacionEliminar(p.Id, p.Nombre))">
+                                <i class="bi bi-trash3"></i>
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+<!-- Modal para crear/editar producto -->
+<div class="@(mostrarModal ? "modal show d-block" : "modal fade")" tabindex="-1" role="dialog" style="background-color: rgba(0,0,0,0.5);">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">@tituloModal</h5>
+                <button type="button" class="btn-close" @onclick="CerrarModal" aria-label="Close"></button>
+            </div>
+            <EditForm Model="producto" OnValidSubmit="GuardarProducto">
+                <div class="modal-body">
+                    <DataAnnotationsValidator />
+                    <div class="mb-3">
+                        <label class="form-label">Nombre</label>
+                        <InputText class="form-control" @bind-Value="producto.Nombre" />
+                        <ValidationMessage For="@(() => producto.Nombre)" class="text-danger" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Precio</label>
+                        <InputNumber class="form-control" @bind-Value="producto.Precio" />
+                        <ValidationMessage For="@(() => producto.Precio)" class="text-danger" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarModal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Guardar</button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de confirmación para eliminar -->
+<div class="@(mostrarConfirmacion ? "modal show d-block" : "modal fade")" tabindex="-1" role="dialog" style="background-color: rgba(0,0,0,0.5);">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">Confirmar Eliminación</h5>
+                <button type="button" class="btn-close btn-close-white" @onclick="OcultarConfirmacion" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>¿Estás seguro que deseas eliminar el producto <strong>@productoAEliminarNombre</strong>?</p>
+                <p class="text-danger">Esta acción no se puede deshacer.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" @onclick="OcultarConfirmacion">Cancelar</button>
+                <button type="button" class="btn btn-danger" @onclick="ConfirmarEliminacion">Eliminar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    List<Producto> listaProductos;
+    Producto producto = new();
+    string tituloModal = "Nuevo Producto";
+    bool mostrarModal = false;
+
+    // Variables para eliminar
+    bool mostrarConfirmacion = false;
+    int productoAEliminarId;
+    string productoAEliminarNombre = string.Empty;
+
+    // Advertencia para mostrar errores
+    string mensajeAdvertencia = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarProductos();
+    }
+
+    private async Task CargarProductos()
+    {
+        listaProductos = await Http.GetFromJsonAsync<List<Producto>>("api/producto");
+    }
+
+    private void NuevoProducto()
+    {
+        producto = new Producto();
+        tituloModal = "Nuevo Producto";
+        mostrarModal = true;
+    }
+
+    private void EditarProducto(Producto p)
+    {
+        producto = new Producto
+        {
+            Id = p.Id,
+            Nombre = p.Nombre,
+            Precio = p.Precio
+        };
+        tituloModal = "Editar Producto";
+        mostrarModal = true;
+    }
+
+    private void CerrarModal()
+    {
+        mostrarModal = false;
+    }
+
+    private void MostrarConfirmacionEliminar(int id, string nombre)
+    {
+        productoAEliminarId = id;
+        productoAEliminarNombre = nombre;
+        mostrarConfirmacion = true;
+    }
+
+    private void OcultarConfirmacion()
+    {
+        mostrarConfirmacion = false;
+    }
+
+    private async Task ConfirmarEliminacion()
+    {
+        try
+        {
+            var response = await Http.DeleteAsync($"api/producto/{productoAEliminarId}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                await CargarProductos();
+                mostrarConfirmacion = false;
+                mensajeAdvertencia = string.Empty;
+            }
+            else
+            {
+                var mensaje = await response.Content.ReadAsStringAsync();
+                mensajeAdvertencia = mensaje;
+                mostrarConfirmacion = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            mensajeAdvertencia = "Error al intentar eliminar el producto.";
+            Console.WriteLine($"Excepción al eliminar: {ex.Message}");
+        }
+    }
+
+    private async Task GuardarProducto()
+    {
+        if (producto.Id == 0)
+        {
+            await Http.PostAsJsonAsync("api/producto", producto);
+        }
+        else
+        {
+            await Http.PutAsJsonAsync($"api/producto/{producto.Id}", producto);
+        }
+
+        await CargarProductos();
+        mostrarModal = false;
+    }
+}

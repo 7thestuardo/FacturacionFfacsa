@@ -1,0 +1,335 @@
+﻿@page "/"
+@using FacturacionFfacsa.Shared.Models
+@inject HttpClient Http
+
+<PageTitle>Listado de Facturas</PageTitle>
+
+<div style="display: flex; justify-content: space-between; align-items: center;">
+    <h3>Listado de Facturas</h3>
+    <button class="btn btn-success mb-3" @onclick="NuevoFactura"><i class="bi bi-plus-circle-fill"></i> Nueva Factura</button>
+</div>
+
+@if (facturas == null)
+{
+    <p><em>Cargando facturas...</em></p>
+}
+else if (!facturas.Any())
+{
+    <div class="alert alert-info">No hay facturas registradas.</div>
+}
+else
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Número</th>
+                <th>Fecha</th>
+                <th>Cliente</th>
+                <th>Total</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var f in facturas)
+            {
+                <tr>
+                    <td>@f.Numero</td>
+                    <td>@f.Fecha.ToShortDateString()</td>
+                    <td>@f.Cliente</td>
+                    <td>@f.Total.ToString("C")</td>
+                    <td>
+                        <button class="btn btn-primary btn-sm me-1" @onclick="() => VerFactura(f)">
+                            <i class="bi bi-eye-fill"></i>
+                        </button>
+                        <button class="btn btn-danger btn-sm" @onclick="() => MostrarConfirmacionEliminar(f.Id, f.Numero)">
+                            <i class="bi bi-trash3"></i>
+                        </button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@if (mostrarModal)
+{
+    <div class="modal show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@tituloModal</h5>
+                    <button type="button" class="btn-close" @onclick="CerrarModal" aria-label="Close"></button>
+                </div>
+                <EditForm Model="facturaSeleccionada" OnValidSubmit="GuardarFactura">
+                    <DataAnnotationsValidator />
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label>Número</label>
+                            <InputText class="form-control" @bind-Value="facturaSeleccionada.Numero" readonly="@soloLectura" />
+                            <ValidationMessage For="@(() => facturaSeleccionada.Numero)" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label>Fecha</label>
+                            <InputDate class="form-control" @bind-Value="facturaSeleccionada.Fecha" disabled="@soloLectura" />
+                            <ValidationMessage For="@(() => facturaSeleccionada.Fecha)" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label>Cliente</label>
+                            <InputText class="form-control" @bind-Value="facturaSeleccionada.Cliente" readonly="@soloLectura" />
+                            <ValidationMessage For="@(() => facturaSeleccionada.Cliente)" />
+                        </div>
+
+                        <h5>Detalles</h5>
+                        <table class="table table-sm table-bordered">
+                            <thead>
+                                <tr>
+                                    <th>Producto</th>
+                                    <th>Cantidad</th>
+                                    <th>Precio Unitario</th>
+                                    <th>Subtotal</th>
+                                    @if (!soloLectura)
+                                    {
+                                        <th style="width: 50px;"></th>
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var d in facturaSeleccionada.Detalles)
+                                {
+                                    <tr>
+                                        <td>
+                                            <select class="form-select" @onchange="(e) => OnProductoChanged(e, d)" value="@d.ProductoId" disabled="@soloLectura">
+                                                <option value="">-- Seleccione --</option>
+                                                @foreach (var p in productos)
+                                                {
+                                                    <option value="@p.Id">@p.Nombre</option>
+                                                }
+                                            </select>
+                                        </td>
+                                        <td>
+                                            <InputNumber class="form-control" @bind-Value="d.Cantidad" readonly="@soloLectura" />
+                                        </td>
+                                        <td>
+                                            <InputNumber class="form-control" step="0.01" @bind-Value="d.Precio" readonly="@soloLectura" />
+                                        </td>
+                                        <td>@( (d.Cantidad * d.Precio).ToString("F2") )</td>
+                                        @if (!soloLectura)
+                                        {
+                                            <td>
+                                                <button type="button" class="btn btn-danger btn-sm" @onclick="@(() => QuitarDetalle(d))">X</button>
+                                            </td>
+                                        }
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+
+                        @if (!soloLectura)
+                        {
+                            <button type="button" class="btn btn-secondary" @onclick="AgregarDetalle">Agregar Detalle</button>
+                        }
+
+                        <div class="mt-3 fw-bold text-end">
+                            Total: @facturaSeleccionada.Detalles.Sum(d => d.Cantidad * d.Precio).ToString("C")
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" @onclick="CerrarModal">Cerrar</button>
+                        @if (!soloLectura)
+                        {
+                            <button type="submit" class="btn btn-primary">Guardar</button>
+                        }
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+    </div>
+}
+
+@if (mostrarConfirmacion)
+{
+    <div class="modal show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title">Confirmar Eliminación</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="OcultarConfirmacion" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>¿Seguro que quieres eliminar la factura <strong>@facturaAEliminarNumero</strong>?</p>
+                    <p class="text-danger">Esta acción no se puede deshacer.</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="OcultarConfirmacion">Cancelar</button>
+                    <button class="btn btn-danger" @onclick="ConfirmarEliminacion">Eliminar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    List<Factura> facturas;
+    List<Producto> productos = new();
+
+    Factura facturaSeleccionada = new Factura();
+    string tituloModal = "Nueva Factura";
+    bool mostrarModal = false;
+    bool soloLectura = false;
+
+    bool mostrarConfirmacion = false;
+    int facturaAEliminarId;
+    string facturaAEliminarNumero;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarFacturas();
+        await CargarProductos();
+    }
+
+    private async Task CargarFacturas()
+    {
+        facturas = await Http.GetFromJsonAsync<List<Factura>>("api/Factura");
+    }
+
+    private async Task CargarProductos()
+    {
+        productos = await Http.GetFromJsonAsync<List<Producto>>("api/Producto");
+    }
+
+    private void NuevoFactura()
+    {
+        soloLectura = false;
+        facturaSeleccionada = new Factura
+        {
+            Fecha = DateTime.Today,
+            Detalles = new List<FacturaDetalle>()
+        };
+        tituloModal = "Nueva Factura";
+        mostrarModal = true;
+    }
+
+    private void VerFactura(Factura f)
+    {
+        soloLectura = true;
+        facturaSeleccionada = ClonarFactura(f);
+        tituloModal = "Detalle de Factura";
+        mostrarModal = true;
+    }
+
+    private Factura ClonarFactura(Factura f)
+    {
+        return new Factura
+        {
+            Id = f.Id,
+            Numero = f.Numero,
+            Fecha = f.Fecha,
+            Cliente = f.Cliente,
+            Total = f.Total,
+            Detalles = f.Detalles.Select(d => new FacturaDetalle
+            {
+                Id = d.Id,
+                FacturaId = d.FacturaId,
+                ProductoId = d.ProductoId,
+                Cantidad = d.Cantidad,
+                Precio = d.Precio,
+                Producto = productos.FirstOrDefault(p => p.Id == d.ProductoId)
+            }).ToList()
+        };
+    }
+
+    private void CerrarModal()
+    {
+        mostrarModal = false;
+    }
+
+    private void AgregarDetalle()
+    {
+        facturaSeleccionada.Detalles.Add(new FacturaDetalle
+        {
+            Cantidad = 1,
+            Precio = 0
+        });
+    }
+
+    private void QuitarDetalle(FacturaDetalle detalle)
+    {
+        facturaSeleccionada.Detalles.Remove(detalle);
+    }
+
+    private void MostrarConfirmacionEliminar(int id, string numero)
+    {
+        facturaAEliminarId = id;
+        facturaAEliminarNumero = numero;
+        mostrarConfirmacion = true;
+    }
+
+    private void OcultarConfirmacion()
+    {
+        mostrarConfirmacion = false;
+    }
+
+    private async Task ConfirmarEliminacion()
+    {
+        var response = await Http.DeleteAsync($"api/Factura/{facturaAEliminarId}");
+        if (response.IsSuccessStatusCode)
+        {
+            await CargarFacturas();
+            mostrarConfirmacion = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task GuardarFactura()
+    {
+        if (soloLectura) return;
+
+        var facturaDto = new FacturaDTO
+        {
+            Id = facturaSeleccionada.Id,
+            Numero = facturaSeleccionada.Numero,
+            Fecha = facturaSeleccionada.Fecha,
+            Cliente = facturaSeleccionada.Cliente,
+            Detalles = facturaSeleccionada.Detalles.Select(d => new FacturaDetalleDTO
+            {
+                ProductoId = d.ProductoId,
+                Cantidad = d.Cantidad,
+                Precio = d.Precio
+            }).ToList()
+        };
+
+        HttpResponseMessage response;
+
+        if (facturaSeleccionada.Id == 0)
+        {
+            response = await Http.PostAsJsonAsync("api/Factura", facturaDto);
+        }
+        else
+        {
+            response = await Http.PutAsJsonAsync($"api/Factura/{facturaSeleccionada.Id}", facturaDto);
+        }
+
+        if (response.IsSuccessStatusCode)
+        {
+            mostrarModal = false;
+            await CargarFacturas();
+        }
+    }
+
+    private void OnProductoChanged(ChangeEventArgs e, FacturaDetalle detalle)
+    {
+        if (soloLectura) return;
+
+        if (int.TryParse(e.Value?.ToString(), out int productoId))
+        {
+            detalle.ProductoId = productoId;
+            var producto = productos.FirstOrDefault(p => p.Id == productoId);
+            if (producto != null)
+            {
+                detalle.Precio = producto.Precio;
+            }
+        }
+    }
+}
